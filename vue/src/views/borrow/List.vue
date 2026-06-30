@@ -7,6 +7,9 @@
       <el-input style="width: 240px; margin-left: 5px" placeholder="请输入用户名称" v-model="params.userName"></el-input>
       <el-button style="margin-left: 5px" type="primary" @click="load"><i class="el-icon-search"></i>搜索</el-button>
       <el-button style="margin-left: 5px" type="warning" @click="reset"><i class="el-icon-refresh"></i>重置</el-button>
+      <el-button style="margin-left: 5px" type="success" :loading="aiLoading" @click="runBorrowAnalyze">
+        <i class="el-icon-data-line"></i>AI 分析
+      </el-button>
     </div>
 
     <el-table :data="tableData" stripe row-key="id" default-expand-all fit>
@@ -69,12 +72,45 @@
       </el-pagination>
     </div>
 
+    <el-dialog title="借阅数据智能分析" :visible.sync="aiVisible" width="760px">
+      <div v-if="aiResult">
+        <el-alert :title="aiResult.summary" type="info" :closable="false" style="margin-bottom: 12px"></el-alert>
+        <h3>热门图书</h3>
+        <el-table :data="aiResult.hotBooks || []" size="small" border>
+          <el-table-column prop="bookName" label="图书"></el-table-column>
+          <el-table-column prop="count" label="借阅次数"></el-table-column>
+        </el-table>
+        <h3>热门分类</h3>
+        <el-table :data="aiResult.hotCategories || []" size="small" border>
+          <el-table-column prop="category" label="分类"></el-table-column>
+          <el-table-column prop="count" label="借阅次数"></el-table-column>
+        </el-table>
+        <h3>逾期风险</h3>
+        <el-table :data="aiResult.overdueRisks || []" size="small" border>
+          <el-table-column prop="bookName" label="图书"></el-table-column>
+          <el-table-column prop="userName" label="会员"></el-table-column>
+          <el-table-column prop="returnDate" label="应还日期"></el-table-column>
+          <el-table-column prop="status" label="状态"></el-table-column>
+        </el-table>
+        <h3>管理建议</h3>
+        <el-alert
+            v-for="(item, index) in aiResult.suggestions || []"
+            :key="index"
+            :title="item"
+            type="success"
+            :closable="false"
+            style="margin-bottom: 8px">
+        </el-alert>
+      </div>
+    </el-dialog>
+
   </div>
 </template>
 
 <script>
 import request from "@/utils/request";
 import Cookies from "js-cookie";
+import { analyzeBorrow } from "@/api/ai";
 
 export default {
   name: 'BorrowList',
@@ -83,6 +119,9 @@ export default {
       admin: Cookies.get('book') ? JSON.parse(Cookies.get('admin')) : {},
       tableData: [],
       total: 0,
+      aiLoading: false,
+      aiVisible: false,
+      aiResult: null,
       params: {
         pageNum: 1,
         pageSize: 10,
@@ -137,6 +176,19 @@ export default {
         } else {
           this.$notify.error(res.msg)
         }
+      })
+    },
+    runBorrowAnalyze() {
+      this.aiLoading = true
+      analyzeBorrow('month').then(res => {
+        if(res.code === '200') {
+          this.aiResult = res.data
+          this.aiVisible = true
+        } else {
+          this.$notify.error(res.msg || 'AI分析失败')
+        }
+      }).finally(() => {
+        this.aiLoading = false
       })
     }
   }

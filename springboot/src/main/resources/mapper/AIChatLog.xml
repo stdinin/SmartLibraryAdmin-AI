@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.springboot.mapper.AIChatLogMapper">
+
+    <insert id="save" useGeneratedKeys="true" keyProperty="id">
+        insert into ai_chat_log(admin_id, question, answer, retrieved_context, intent)
+        values(#{adminId}, #{question}, #{answer}, #{retrievedContext}, #{intent})
+    </insert>
+
+    <select id="listByAdminId" resultType="com.example.springboot.entity.AIChatLog">
+        select * from ai_chat_log where admin_id = #{adminId} order by id desc
+    </select>
+</mapper>

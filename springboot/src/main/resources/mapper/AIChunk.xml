@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.springboot.mapper.AIChunkMapper">
+
+    <select id="listByKnowledgeId" resultType="com.example.springboot.entity.AIChunk">
+        select * from ai_chunk where knowledge_id = #{knowledgeId} order by id asc
+    </select>
+
+    <select id="searchByKeyword" resultType="com.example.springboot.entity.AIChunk">
+        select * from ai_chunk
+        where chunk_text like concat('%', #{keyword}, '%')
+        order by id desc
+        limit #{limit}
+    </select>
+
+    <insert id="save" useGeneratedKeys="true" keyProperty="id">
+        insert into ai_chunk(knowledge_id, chunk_text, embedding_id, embedding_text, metadata)
+        values(#{knowledgeId}, #{chunkText}, #{embeddingId}, #{embeddingText}, #{metadata})
+    </insert>
+
+    <delete id="deleteByKnowledgeId">
+        delete from ai_chunk where knowledge_id = #{knowledgeId}
+    </delete>
+</mapper>

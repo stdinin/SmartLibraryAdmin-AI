@@ -74,6 +74,10 @@
           </template>
           <el-menu-item index="/restitutionList">还书列表</el-menu-item>
         </el-submenu>
+          <el-menu-item index="/aiAssistant">
+            <i class="el-icon-magic-stick"></i>
+            <span>智能助手</span>
+          </el-menu-item>
         </el-menu>
       </div>
 

@@ -20,7 +20,7 @@
         <el-input v-model="form.author" placeholder="请输入名称"></el-input>
       </el-form-item>
       <el-form-item label="出版社" prop="publisher">
-        <el-input v-model="form.publiser" placeholder="请输入出版社"></el-input>
+        <el-input v-model="form.publisher" placeholder="请输入出版社"></el-input>
       </el-form-item>
       <el-form-item label="分类" prop="category">
         <el-cascader
@@ -54,14 +54,32 @@
     </el-form>
 
     <div style="text-align: center; margin-top: 30px">
+      <el-button type="success" @click="generateAiCatalog" :loading="aiLoading" size="medium">AI 智能编目</el-button>
       <el-button type="primary" @click="save" size="medium">提交</el-button>
     </div>
+
+    <el-dialog title="AI 编目建议" :visible.sync="aiDialogVisible" width="560px">
+      <el-descriptions :column="1" border v-if="aiSuggestion">
+        <el-descriptions-item label="建议分类">{{ aiSuggestion.category }}</el-descriptions-item>
+        <el-descriptions-item label="关键词">
+          <el-tag v-for="tag in aiSuggestion.tags || []" :key="tag" style="margin-right: 6px">{{ tag }}</el-tag>
+        </el-descriptions-item>
+        <el-descriptions-item label="简介">{{ aiSuggestion.summary }}</el-descriptions-item>
+        <el-descriptions-item label="适合读者">{{ aiSuggestion.suitableReaders }}</el-descriptions-item>
+        <el-descriptions-item label="推荐理由">{{ aiSuggestion.recommendReason }}</el-descriptions-item>
+      </el-descriptions>
+      <span slot="footer">
+        <el-button @click="aiDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="applyAiSuggestion">应用建议</el-button>
+      </span>
+    </el-dialog>
   </div>
 </template>
 
 <script>
 import request from "@/utils/request";
 import Cookies from "js-cookie";
+import { generateCatalog } from "@/api/ai";
 export default {
   name: 'AddBook',
   data() {
@@ -76,6 +94,9 @@ export default {
       admin: Cookies.get('admin') ? JSON.parse(Cookies.get('admin')) : {},
       form: { score: 10, cover: '' },
       categories: [],
+      aiLoading: false,
+      aiDialogVisible: false,
+      aiSuggestion: null,
       rules: {
         name: [
           {required: true, message: '请输入图书名称', trigger: 'blur'},
@@ -105,6 +126,40 @@ export default {
         // this.$set(this.form, 'cover', res.data)
         this.form.cover = res.data
       }
+    },
+    generateAiCatalog() {
+      if(!this.form.name) {
+        this.$message.warning('请先输入图书名称')
+        return
+      }
+      this.aiLoading = true
+      generateCatalog({
+        title: this.form.name,
+        author: this.form.author,
+        publisher: this.form.publisher,
+        isbn: this.form.bookNo,
+        description: this.form.description
+      }).then(res => {
+        if(res.code === '200') {
+          this.aiSuggestion = res.data
+          this.aiDialogVisible = true
+        } else {
+          this.$notify.error(res.msg || 'AI编目失败')
+        }
+      }).finally(() => {
+        this.aiLoading = false
+      })
+    },
+    applyAiSuggestion() {
+      if(!this.aiSuggestion) return
+      if(this.aiSuggestion.summary) {
+        this.form.description = this.aiSuggestion.summary
+      }
+      if(this.aiSuggestion.category) {
+        this.form.categories = this.aiSuggestion.category.split(' > ')
+      }
+      this.aiDialogVisible = false
+      this.$notify.success('已应用AI建议，请确认后提交')
     },
     save() {
       this.$refs['ruleForm'].validate((valid) => {

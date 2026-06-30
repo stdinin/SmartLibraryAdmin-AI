@@ -69,6 +69,8 @@ const routes = [
       { path: 'editBorrow', name: 'EditBorrow', component: () => import('@/views/borrow/Edit.vue') },
       //  ====  Return  ====
       { path: 'restitutionList', name: 'RestitutionList', component: () => import('@/views/restitution/List.vue') },
+      //  ====  AI  ====
+      { path: 'aiAssistant', name: 'AIAssistant', component: () => import('@/views/ai/Assistant.vue') },
     ]
   },
   {

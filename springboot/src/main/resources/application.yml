@@ -13,3 +13,9 @@ mybatis:
   configuration:
     log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
     map-underscore-to-camel-case: true #开启数据库字段下划线转驼峰
+
+ai:
+  api-url: ${AI_API_URL:}
+  api-key: ${AI_API_KEY:}
+  model: ${AI_MODEL:}
+  timeout: ${AI_TIMEOUT:15000}
