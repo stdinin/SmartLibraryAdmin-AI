@@ -1,0 +1,22 @@
+.DS_Store
+.idea/
+.vscode/
+*.log
+*.out
+*.err
+
+# Frontend dependencies and build output
+vue/node_modules/
+vue/dist/
+vue/.npm-cache/
+.npm-cache/
+
+# Backend build output
+springboot/target/
+
+# Local runtime data and temporary assets
+tmp/
+
+# Local environment files
+.env.local
+.env.*.local
