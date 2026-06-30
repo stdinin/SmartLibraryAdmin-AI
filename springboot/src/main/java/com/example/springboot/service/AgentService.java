@@ -8,10 +8,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 @Slf4j
@@ -116,6 +118,53 @@ public class AgentService {
         return result;
     }
 
+    public List<Map<String, Object>> listTasks(Integer adminId, Integer limit) {
+        int safeLimit = limit == null || limit <= 0 ? 10 : Math.min(limit, 50);
+        try {
+            return aiTaskLogMapper.listByAdminId(adminId, safeLimit).stream()
+                    .map(task -> buildTaskStatus(adminId, task))
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            log.warn("读取AI任务列表失败", e);
+            return new ArrayList<>();
+        }
+    }
+
+    public Map<String, Object> taskStatus(Integer adminId, Long taskLogId) {
+        AITaskLog taskLog = loadOwnedTask(adminId, taskLogId);
+        if (taskLog == null) {
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("taskLogId", taskLogId);
+            result.put("status", "not_found");
+            result.put("progress", 0);
+            result.put("blockedReason", "任务不存在或无权查看");
+            return result;
+        }
+        return buildTaskStatus(adminId, taskLog);
+    }
+
+    public Map<String, Object> cancel(Integer adminId, Long taskLogId) {
+        AITaskLog taskLog = loadOwnedTask(adminId, taskLogId);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("taskLogId", taskLogId);
+        if (taskLog == null) {
+            result.put("cancelled", false);
+            result.put("blockedReason", "任务不存在或无权取消");
+            return result;
+        }
+        if (!"pending_confirm".equals(taskLog.getStatus())) {
+            result.put("cancelled", false);
+            result.put("blockedReason", "只有等待确认的AI草案可以取消");
+            result.put("task", buildTaskStatus(adminId, taskLog));
+            return result;
+        }
+        updateStatus(taskLogId, "cancelled");
+        result.put("cancelled", true);
+        result.put("blockedReason", null);
+        result.put("task", taskStatus(adminId, taskLogId));
+        return result;
+    }
+
     public Map<String, Object> toolPolicy() {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("autoTools", AUTO_TOOLS);
@@ -129,6 +178,104 @@ public class AgentService {
         draft.put("rawTask", task);
         draft.put("notice", "请在原业务页面核对字段后保存，Agent不会直接写入数据库。");
         return draft;
+    }
+
+    private AITaskLog loadOwnedTask(Integer adminId, Long taskLogId) {
+        if (taskLogId == null) {
+            return null;
+        }
+        try {
+            AITaskLog taskLog = aiTaskLogMapper.getById(taskLogId);
+            if (taskLog == null) {
+                return null;
+            }
+            if (adminId != null && taskLog.getAdminId() != null && !adminId.equals(taskLog.getAdminId())) {
+                return null;
+            }
+            return taskLog;
+        } catch (Exception e) {
+            log.warn("读取AI任务状态失败", e);
+            return null;
+        }
+    }
+
+    private Map<String, Object> buildTaskStatus(Integer adminId, AITaskLog taskLog) {
+        Map<String, Object> output = parseObject(taskLog.getOutputJson());
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("taskLogId", taskLog.getId());
+        result.put("taskType", taskLog.getTaskType());
+        result.put("status", taskLog.getStatus());
+        result.put("progress", progressOf(taskLog.getStatus()));
+        result.put("createdAt", taskLog.getCreateTime());
+        result.put("intent", output.get("intent"));
+        result.put("risk_level", output.get("risk_level"));
+        result.put("need_confirm", output.get("need_confirm"));
+        result.put("blockedReason", output.get("blockedReason"));
+        result.put("steps", output.get("steps"));
+        result.put("tools_to_call", output.get("tools_to_call"));
+        result.put("draft_result", output.get("draft_result"));
+        result.put("subTasks", buildSubTasks(output, taskLog.getStatus()));
+        result.put("raw", output);
+        return result;
+    }
+
+    private List<Map<String, Object>> buildSubTasks(Map<String, Object> output, String status) {
+        List<Map<String, Object>> subTasks = new ArrayList<>();
+        Object tools = output.get("tools_to_call");
+        if (tools instanceof Iterable) {
+            for (Object tool : (Iterable<?>) tools) {
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("type", String.valueOf(tool));
+                item.put("name", toolName(String.valueOf(tool)));
+                item.put("status", subTaskStatus(status));
+                subTasks.add(item);
+            }
+        }
+        return subTasks;
+    }
+
+    private String subTaskStatus(String status) {
+        if ("success".equals(status) || "manual_required".equals(status)) return "COMPLETED";
+        if ("pending_confirm".equals(status)) return "WAIT_CONFIRM";
+        if ("blocked".equals(status)) return "BLOCKED";
+        if ("cancelled".equals(status)) return "CANCELLED";
+        return "UNKNOWN";
+    }
+
+    private int progressOf(String status) {
+        if ("success".equals(status) || "manual_required".equals(status) || "blocked".equals(status) || "cancelled".equals(status)) {
+            return 100;
+        }
+        if ("pending_confirm".equals(status)) {
+            return 80;
+        }
+        return 0;
+    }
+
+    private String toolName(String tool) {
+        Map<String, String> names = new LinkedHashMap<>();
+        names.put("searchBooks", "检索图书");
+        names.put("getBookDetail", "读取图书详情");
+        names.put("checkBookQuality", "馆藏质检");
+        names.put("getBorrowStatistics", "借阅统计");
+        names.put("findOverdueRecords", "逾期检索");
+        names.put("generateBookMetadata", "生成编目建议");
+        names.put("generateOverdueNotice", "生成逾期提醒");
+        names.put("createBookDraft", "新增图书草案");
+        names.put("updateBookDraft", "修改图书草案");
+        return names.getOrDefault(tool, tool);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> parseObject(String json) {
+        if (StrUtil.isBlank(json)) {
+            return new LinkedHashMap<>();
+        }
+        try {
+            return JSONUtil.parseObj(json);
+        } catch (Exception e) {
+            return new LinkedHashMap<>();
+        }
     }
 
     private boolean containsAny(String text, String... words) {

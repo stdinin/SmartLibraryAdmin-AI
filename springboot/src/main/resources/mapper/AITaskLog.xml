@@ -13,6 +13,13 @@
         select * from ai_task_log where id = #{id}
     </select>
 
+    <select id="listByAdminId" resultType="com.example.springboot.entity.AITaskLog">
+        select * from ai_task_log
+        where (admin_id = #{adminId} or #{adminId} is null)
+        order by id desc
+        limit #{limit}
+    </select>
+
     <update id="updateStatus">
         update ai_task_log set status = #{status} where id = #{id}
     </update>

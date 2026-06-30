@@ -3,6 +3,7 @@ package com.example.springboot.controller;
 import com.example.springboot.common.Result;
 import com.example.springboot.controller.request.ai.AgentConfirmRequest;
 import com.example.springboot.controller.request.ai.AgentPlanRequest;
+import com.example.springboot.controller.request.ai.AIKnowledgeRequest;
 import com.example.springboot.controller.request.ai.CatalogRequest;
 import com.example.springboot.controller.request.ai.RagChatRequest;
 import com.example.springboot.entity.Admin;
@@ -55,6 +56,30 @@ public class AIController {
         }
     }
 
+    @GetMapping("/knowledge/list")
+    public Result knowledgeList() {
+        return Result.success(ragService.listKnowledge());
+    }
+
+    @PostMapping("/knowledge/save")
+    public Result knowledgeSave(@RequestBody AIKnowledgeRequest request) {
+        try {
+            return Result.success(ragService.saveKnowledge(request));
+        } catch (IllegalArgumentException e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
+    @DeleteMapping("/knowledge/{id}")
+    public Result knowledgeDelete(@PathVariable Long id) {
+        try {
+            ragService.deleteKnowledge(id);
+            return Result.success();
+        } catch (IllegalArgumentException e) {
+            return Result.error(e.getMessage());
+        }
+    }
+
     @PostMapping("/agent/plan")
     public Result agentPlan(@RequestBody AgentPlanRequest request) {
         try {
@@ -67,6 +92,21 @@ public class AIController {
     @PostMapping("/agent/confirm")
     public Result agentConfirm(@RequestBody AgentConfirmRequest request) {
         return Result.success(agentService.confirm(currentAdminId(), request.getTaskLogId(), request.getConfirm()));
+    }
+
+    @GetMapping("/agent/tasks")
+    public Result agentTasks(@RequestParam(defaultValue = "10") Integer limit) {
+        return Result.success(agentService.listTasks(currentAdminId(), limit));
+    }
+
+    @GetMapping("/agent/tasks/{taskLogId}")
+    public Result agentTask(@PathVariable Long taskLogId) {
+        return Result.success(agentService.taskStatus(currentAdminId(), taskLogId));
+    }
+
+    @PostMapping("/agent/tasks/{taskLogId}/cancel")
+    public Result agentTaskCancel(@PathVariable Long taskLogId) {
+        return Result.success(agentService.cancel(currentAdminId(), taskLogId));
     }
 
     @GetMapping("/agent/tools")
