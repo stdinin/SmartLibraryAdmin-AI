@@ -15,4 +15,6 @@ public interface AITaskLogMapper {
     List<AITaskLog> listByAdminId(@Param("adminId") Integer adminId, @Param("limit") Integer limit);
 
     void updateStatus(@Param("id") Long id, @Param("status") String status);
+
+    void updateOutputAndStatus(@Param("id") Long id, @Param("outputJson") String outputJson, @Param("status") String status);
 }

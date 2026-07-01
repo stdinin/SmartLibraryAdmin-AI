@@ -23,4 +23,8 @@
     <update id="updateStatus">
         update ai_task_log set status = #{status} where id = #{id}
     </update>
+
+    <update id="updateOutputAndStatus">
+        update ai_task_log set output_json = #{outputJson}, status = #{status} where id = #{id}
+    </update>
 </mapper>

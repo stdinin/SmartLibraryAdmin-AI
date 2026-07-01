@@ -140,6 +140,14 @@
 
             <el-progress :percentage="agentProgress" :status="agentProgress === 100 ? 'success' : undefined" class="task-progress"></el-progress>
 
+            <el-alert
+                v-if="agentExecutionResult"
+                :title="agentExecutionResult.message || agentExecutionResult.blockedReason"
+                :type="agentExecutionResult.executed ? 'success' : 'warning'"
+                :closable="false"
+                class="execution-alert">
+            </el-alert>
+
             <h3>执行工具</h3>
             <el-timeline>
               <el-timeline-item
@@ -351,7 +359,7 @@ export default {
           title: '需确认执行',
           type: 'warning',
           desc: '生成新增/修改草案，管理员确认后再去原页面保存',
-          items: ['执行：新增一本《人工智能导论》作者王明出版社清华大学出版社库存3本', '执行：修改《活着》的分类为文学小说']
+          items: ['执行：新增一本《任务规划演示书》作者演示作者出版社演示出版社分类计算机库存5本简介用于演示AI任务规划确认执行', '执行：修改《任务规划演示书》的分类为人工智能']
         },
         {
           title: '禁止执行',
@@ -404,6 +412,9 @@ export default {
     },
     isBookWriteDraft() {
       return this.agentResult && this.agentResult.draft_result && this.agentResult.draft_result.bookDraft
+    },
+    agentExecutionResult() {
+      return this.agentResult && this.agentResult.execution_result
     }
   },
   mounted() {
@@ -465,7 +476,14 @@ export default {
       this.confirmLoading = true
       agentConfirm({ taskLogId: this.agentResult.taskLogId, confirm: true }).then(res => {
         if (res.code === '200') {
-          this.$alert(res.data.blockedReason || '已处理', '确认结果')
+          const result = res.data.result || {}
+          const execution = result.execution_result || {}
+          if (execution.executed) {
+            this.$message.success(execution.message || '已执行')
+            this.agentResult = Object.assign({}, this.agentResult, result)
+          } else {
+            this.$alert(execution.blockedReason || res.data.blockedReason || '未执行', '确认结果')
+          }
           this.refreshTask(this.agentResult.taskLogId)
         } else {
           this.$message.error(res.msg || '确认失败')
@@ -675,6 +693,9 @@ export default {
 }
 .task-progress {
   margin: 16px 0 4px;
+}
+.execution-alert {
+  margin: 12px 0;
 }
 .draft-box pre {
   padding: 12px;
