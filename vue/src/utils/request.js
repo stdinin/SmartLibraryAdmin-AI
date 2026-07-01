@@ -29,7 +29,16 @@ request.interceptors.response.use(
     response => {
         let res = response.data;
         if(typeof res === 'string') {
-            res = res ? JSON.parse(res) : res
+            try {
+                res = res ? JSON.parse(res) : res
+            } catch (e) {
+                console.error('接口响应不是合法JSON', res)
+                return {
+                    code: '-1',
+                    data: null,
+                    msg: '接口响应格式异常，请刷新后重试'
+                }
+            }
         }
         if(res.code === '401') {
             router.push('/login')

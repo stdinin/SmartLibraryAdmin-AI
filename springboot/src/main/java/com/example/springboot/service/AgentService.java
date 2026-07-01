@@ -510,7 +510,11 @@ public class AgentService {
             return new LinkedHashMap<>();
         }
         try {
-            return JSONUtil.parseObj(json);
+            Object plain = toPlainObject(JSONUtil.parseObj(json));
+            if (plain instanceof Map) {
+                return (Map<String, Object>) plain;
+            }
+            return new LinkedHashMap<>();
         } catch (Exception e) {
             return new LinkedHashMap<>();
         }
