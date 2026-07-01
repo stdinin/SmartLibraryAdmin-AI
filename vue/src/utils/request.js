@@ -7,6 +7,23 @@ const request = axios.create({
     timeout: 5000
 })
 
+function redirectToLogin() {
+    Cookies.remove('admin')
+    if (router.currentRoute && router.currentRoute.path === '/login') return
+    router.replace({
+        path: '/login',
+        query: { redirect: router.currentRoute ? router.currentRoute.fullPath : '/' }
+    }).catch(() => {})
+}
+
+function errorResult(msg) {
+    return {
+        code: '-1',
+        data: null,
+        msg
+    }
+}
+
 // request 拦截器
 // 可以自请求发送前对请求最一些处理
 
@@ -15,8 +32,14 @@ request.interceptors.request.use(config => {
 
     const adminJson = Cookies.get('admin')
     if(adminJson) {
-        // 设置请求头
-        config.headers['token'] = JSON.parse(adminJson).token
+        try {
+            const admin = JSON.parse(adminJson)
+            if (admin && admin.token) {
+                config.headers['token'] = admin.token
+            }
+        } catch (e) {
+            Cookies.remove('admin')
+        }
     }
     return config
 }, error => {
@@ -33,21 +56,25 @@ request.interceptors.response.use(
                 res = res ? JSON.parse(res) : res
             } catch (e) {
                 console.error('接口响应不是合法JSON', res)
-                return {
-                    code: '-1',
-                    data: null,
-                    msg: '接口响应格式异常，请刷新后重试'
-                }
+                return errorResult('接口响应格式异常，请刷新后重试')
             }
         }
         if(res.code === '401') {
-            router.push('/login')
+            redirectToLogin()
+            return errorResult('登录已过期，请重新登录')
         }
         return res;
     },
     error => {
-        console.log('err' + error)
-        return Promise.reject(error)
+        if (error.response && error.response.status === 401) {
+            redirectToLogin()
+            return Promise.resolve(errorResult('登录已过期，请重新登录'))
+        }
+        const msg = error.response && error.response.data && error.response.data.msg
+            ? error.response.data.msg
+            : (error.message || '接口请求失败')
+        console.error('接口请求失败', error)
+        return Promise.resolve(errorResult(msg))
     }
 )
 

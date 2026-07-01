@@ -5,6 +5,36 @@ import Cookies from "js-cookie";
 
 Vue.use(VueRouter)
 
+function isIgnoredNavigationError(error) {
+  return error && (
+    error.name === 'NavigationDuplicated' ||
+    error.name === 'NavigationCancelled' ||
+    /Navigation (cancelled|duplicated|aborted)/i.test(error.message || '')
+  )
+}
+
+const originalPush = VueRouter.prototype.push
+VueRouter.prototype.push = function push(location, onResolve, onReject) {
+  if (onResolve || onReject) {
+    return originalPush.call(this, location, onResolve, onReject)
+  }
+  return originalPush.call(this, location).catch(error => {
+    if (isIgnoredNavigationError(error)) return error
+    return Promise.reject(error)
+  })
+}
+
+const originalReplace = VueRouter.prototype.replace
+VueRouter.prototype.replace = function replace(location, onResolve, onReject) {
+  if (onResolve || onReject) {
+    return originalReplace.call(this, location, onResolve, onReject)
+  }
+  return originalReplace.call(this, location).catch(error => {
+    if (isIgnoredNavigationError(error)) return error
+    return Promise.reject(error)
+  })
+}
+
 const routes = [
   // ==== 登录 ====
   {
@@ -80,17 +110,30 @@ const routes = [
 ]
 
 const router = new VueRouter({
-  mode: 'history',
+  mode: 'hash',
   base: process.env.BASE_URL,
   routes
 })
 
 router.beforeEach((to, from, next) => {
-  if(to.path === '/login') next()
-  const admin = Cookies.get("admin")
-  if(!admin && to.path !== '/login') return next("/login") // 强制退回到登录页面
-  // 访问/home的时候，并且cookie里面存在数据，这个时候就直接放行
-  next()
+  if (to.path === '/login') {
+    return next()
+  }
+  const adminJson = Cookies.get("admin")
+  if (!adminJson) {
+    return next({ path: "/login", query: { redirect: to.fullPath } })
+  }
+  try {
+    const admin = JSON.parse(adminJson)
+    if (!admin || !admin.token) {
+      Cookies.remove("admin")
+      return next({ path: "/login", query: { redirect: to.fullPath } })
+    }
+  } catch (e) {
+    Cookies.remove("admin")
+    return next({ path: "/login", query: { redirect: to.fullPath } })
+  }
+  return next()
 })
 
 export default router

@@ -74,7 +74,8 @@ export default {
     onSuccess() { // 滑块验证通过之后触发的
       Cookies.set('admin', JSON.stringify(this.loginAdmin))
       this.$notify.success("登录成功")
-      this.$router.push('/')
+      const redirect = this.$route.query.redirect || '/'
+      this.$router.replace(redirect)
     },
     onFail() {
       console.log('onFail')
