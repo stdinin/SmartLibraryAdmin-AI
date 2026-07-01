@@ -139,7 +139,8 @@ public class AIService {
 
     public Map<String, Object> analyzeBorrow(String range, Integer adminId) {
         List<Book> books = safeBooks();
-        List<Borrow> borrows = safeBorrows();
+        List<Borrow> allBorrows = safeBorrows();
+        List<Borrow> borrows = filterBorrowsByRange(allBorrows, range);
         Map<String, Book> bookByNo = books.stream()
                 .filter(book -> StrUtil.isNotBlank(book.getBookNo()))
                 .collect(Collectors.toMap(Book::getBookNo, book -> book, (a, b) -> a));
@@ -172,6 +173,8 @@ public class AIService {
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("range", StrUtil.blankToDefault(range, "month"));
+        result.put("totalBorrows", borrows.size());
+        result.put("totalAllBorrows", allBorrows.size());
         result.put("hotBooks", hotBooks);
         result.put("hotCategories", topCountRows(categoryCounts, "category", 5));
         result.put("coldBooks", coldBooks);
@@ -252,6 +255,34 @@ public class AIService {
             log.warn("AI任务日志保存失败，可能尚未执行增量SQL", e);
         }
         return taskLog;
+    }
+
+    private List<Borrow> filterBorrowsByRange(List<Borrow> borrows, String range) {
+        LocalDate start = rangeStartDate(range);
+        if (start == null) {
+            return borrows;
+        }
+        return borrows.stream()
+                .filter(borrow -> borrow.getCreatetime() != null && !borrow.getCreatetime().isBefore(start))
+                .collect(Collectors.toList());
+    }
+
+    private LocalDate rangeStartDate(String range) {
+        String normalized = StrUtil.blankToDefault(range, "month").trim().toLowerCase();
+        LocalDate today = LocalDate.now();
+        switch (normalized) {
+            case "week":
+                return today.minusWeeks(1);
+            case "month":
+                return today.minusMonths(1);
+            case "month2":
+                return today.minusMonths(2);
+            case "month3":
+            case "quarter":
+                return today.minusMonths(3);
+            default:
+                return today.minusMonths(1);
+        }
     }
 
     private Map<String, Object> fallbackCatalog(CatalogRequest request, List<Category> categories) {
