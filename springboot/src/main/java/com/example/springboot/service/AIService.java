@@ -195,6 +195,42 @@ public class AIService {
         return result;
     }
 
+    public Map<String, Object> searchBooksForTask(String task, Integer adminId) {
+        String normalized = StrUtil.nullToEmpty(task);
+        List<Book> books = safeBooks();
+        Set<String> borrowedBookNos = safeBorrows().stream()
+                .map(Borrow::getBookNo)
+                .filter(StrUtil::isNotBlank)
+                .collect(Collectors.toSet());
+        List<String> filters = new ArrayList<>();
+        boolean zeroStock = containsAny(normalized, "库存为0", "库存 0", "零库存", "无库存");
+        boolean cold = containsAny(normalized, "没人借", "无人借", "长期没人借", "冷门", "没有借阅");
+        boolean abnormalStock = containsAny(normalized, "库存异常", "库存为空", "库存为负");
+        if (zeroStock) filters.add("库存为0");
+        if (cold) filters.add("周期内无借阅记录");
+        if (abnormalStock) filters.add("库存异常");
+
+        List<String> terms = extractBookSearchTerms(normalized);
+        List<Map<String, Object>> matchedBooks = books.stream()
+                .filter(book -> !zeroStock || (book.getNums() != null && book.getNums() == 0))
+                .filter(book -> !abnormalStock || book.getNums() == null || book.getNums() <= 0)
+                .filter(book -> !cold || StrUtil.isBlank(book.getBookNo()) || !borrowedBookNos.contains(book.getBookNo()))
+                .filter(book -> terms.isEmpty() || bookContainsAny(book, terms))
+                .map(this::bookRow)
+                .limit(30)
+                .collect(Collectors.toList());
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("summary", "按任务条件找到 " + matchedBooks.size() + " 本候选图书。");
+        result.put("filters", filters);
+        result.put("queryTerms", terms);
+        result.put("matchedBooks", matchedBooks);
+        result.put("suggestions", bookSearchSuggestions(matchedBooks, zeroStock, cold, abnormalStock));
+        result.put("uncertain", false);
+        saveTaskLog(adminId, "book_search_analysis", Collections.singletonMap("task", task), result, "success");
+        return result;
+    }
+
     public List<Book> safeBooks() {
         try {
             return bookMapper.list();
@@ -377,6 +413,60 @@ public class AIService {
         if (!overdueRisks.isEmpty()) suggestions.add("逾期风险记录建议优先生成提醒文本并联系读者归还。");
         if (suggestions.isEmpty()) suggestions.add("当前借阅风险较低，可持续观察趋势变化。");
         return suggestions;
+    }
+
+    private List<String> bookSearchSuggestions(List<Map<String, Object>> matchedBooks, boolean zeroStock, boolean cold, boolean abnormalStock) {
+        List<String> suggestions = new ArrayList<>();
+        if (matchedBooks.isEmpty()) {
+            suggestions.add("当前条件没有匹配图书，可以放宽关键词或只按库存、分类单独筛选。");
+            return suggestions;
+        }
+        if (zeroStock) suggestions.add("库存为0的图书建议结合借阅热度决定补充副本或暂停展示。");
+        if (cold) suggestions.add("长期无人借阅图书建议优化分类、封面、简介或加入主题推荐。");
+        if (abnormalStock) suggestions.add("库存为空或为负数的数据建议优先人工核对原始入库记录。");
+        if (suggestions.isEmpty()) suggestions.add("候选图书可在图书列表按书名、作者、分类继续精确筛选。");
+        return suggestions;
+    }
+
+    private boolean containsAny(String text, String... words) {
+        for (String word : words) {
+            if (text.contains(word)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private List<String> extractBookSearchTerms(String task) {
+        List<String> noise = Arrays.asList(
+                "帮我", "找出", "查询", "搜索", "筛选", "图书", "书籍", "库存为0", "库存 0", "库存",
+                "为0", "零库存", "无库存", "长期", "没人借", "无人借", "冷门", "相关", "关于", "的书", "且"
+        );
+        String cleaned = task;
+        for (String word : noise) {
+            cleaned = cleaned.replace(word, " ");
+        }
+        return Arrays.stream(cleaned.split("[，。？！、\\s]+"))
+                .map(String::trim)
+                .filter(StrUtil::isNotBlank)
+                .filter(item -> item.length() >= 2)
+                .distinct()
+                .limit(5)
+                .collect(Collectors.toList());
+    }
+
+    private boolean bookContainsAny(Book book, List<String> terms) {
+        String text = StrUtil.nullToEmpty(book.getName()) + " "
+                + StrUtil.nullToEmpty(book.getAuthor()) + " "
+                + StrUtil.nullToEmpty(book.getPublisher()) + " "
+                + StrUtil.nullToEmpty(book.getCategory()) + " "
+                + StrUtil.nullToEmpty(book.getDescription());
+        for (String term : terms) {
+            if (text.contains(term)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private List<Map<String, Object>> topCountRows(Map<String, Long> counts, String nameField, int limit) {

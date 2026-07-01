@@ -63,6 +63,30 @@ public class RagService {
         aiKnowledgeMapper.deleteById(id);
     }
 
+    public Map<String, Object> seedDefaultKnowledge() {
+        List<AIKnowledge> current = listKnowledge();
+        Set<String> existingTitles = current.stream()
+                .map(AIKnowledge::getTitle)
+                .filter(StrUtil::isNotBlank)
+                .collect(Collectors.toSet());
+        int inserted = 0;
+        for (AIKnowledge knowledge : defaultKnowledgeTemplates()) {
+            if (existingTitles.contains(knowledge.getTitle())) {
+                continue;
+            }
+            try {
+                aiKnowledgeMapper.save(knowledge);
+                inserted++;
+            } catch (Exception e) {
+                log.warn("默认知识写入失败: {}", knowledge.getTitle(), e);
+            }
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("inserted", inserted);
+        result.put("total", listKnowledge().size());
+        return result;
+    }
+
     public List<AIKnowledge> retrieve(String question) {
         Set<Long> seenIds = new LinkedHashSet<>();
         List<AIKnowledge> result = new ArrayList<>();
@@ -163,15 +187,37 @@ public class RagService {
 
     private List<AIKnowledge> defaultKnowledge(String question) {
         List<AIKnowledge> list = new ArrayList<>();
-        if (question.contains("逾期") || question.contains("归还") || question.contains("借阅")) {
-            list.add(defaultItem("借阅与逾期规则", "管理员应优先查看借阅列表中的归还日期和过期提醒。逾期记录需要联系读者归还，涉及扣减积分时应按系统现有借还流程处理。"));
+        for (AIKnowledge item : defaultKnowledgeTemplates()) {
+            if (matchesKnowledge(question, item)) {
+                list.add(item);
+            }
+            if (list.size() >= 3) {
+                break;
+            }
         }
-        if (question.contains("分类") || question.contains("编目")) {
-            list.add(defaultItem("图书分类规范", "图书分类应优先使用系统已有分类树。AI编目只能给出建议，管理员确认后才能写入图书表。"));
+        return list;
+    }
+
+    private boolean matchesKnowledge(String question, AIKnowledge item) {
+        String text = item.getTitle() + item.getContent();
+        for (String keyword : keywords(question)) {
+            if (StrUtil.isNotBlank(keyword) && text.contains(keyword)) {
+                return true;
+            }
         }
-        if (question.contains("删除") || question.contains("修改")) {
-            list.add(defaultItem("后台操作安全规则", "AI助手不得自动删除数据。新增或修改类操作必须生成待确认方案，由管理员确认后再通过原有接口执行。"));
-        }
+        return (question.contains("逾期") || question.contains("归还") || question.contains("借阅")) && item.getTitle().contains("借阅")
+                || (question.contains("分类") || question.contains("编目")) && item.getTitle().contains("分类")
+                || (question.contains("删除") || question.contains("修改") || question.contains("新增")) && item.getTitle().contains("安全");
+    }
+
+    private List<AIKnowledge> defaultKnowledgeTemplates() {
+        List<AIKnowledge> list = new ArrayList<>();
+        list.add(defaultItem("借阅与逾期处理规则", "借阅记录应优先依据归还日期、借阅状态和读者联系方式处理。发现逾期风险时，管理员应先联系读者归还，再按系统现有借还流程处理积分或状态，不建议由AI自动修改借阅记录。"));
+        list.add(defaultItem("馆藏分类与编目规范", "新增图书应优先使用系统已有分类树。AI智能编目只能生成分类、标签、简介、适读人群和推荐理由，管理员确认后才可应用到表单并保存。"));
+        list.add(defaultItem("馆藏数据质检规则", "馆藏质检关注缺失作者、出版社、简介、标准码、分类异常、重复书号、重复书名作者、库存为空、库存为0或库存为负数。疑似重复和异常库存必须人工核对。"));
+        list.add(defaultItem("借阅统计分析口径", "热门图书按周期内借阅次数排序，热门分类按图书分类聚合，冷门图书指当前周期内没有借阅记录的馆藏，逾期风险指已借出且应还日期不晚于今天的记录。"));
+        list.add(defaultItem("Agent操作安全边界", "AI Agent可以自动执行查询、统计、质检和建议生成。新增或修改类操作只生成草案，删除图书、删除借阅、删除管理员、修改密码和任意SQL默认禁止自动执行。"));
+        list.add(defaultItem("管理员使用建议", "AI结果应作为辅助判断。涉及写入数据库、删除数据、调整库存、处理逾期或修改会员信息时，管理员需要回到原业务页面核对后手动执行。"));
         return list;
     }
 
@@ -179,7 +225,7 @@ public class RagService {
         AIKnowledge item = new AIKnowledge();
         item.setTitle(title);
         item.setContent(content);
-        item.setSourceType("built_in");
+        item.setSourceType("default");
         return item;
     }
 

@@ -37,6 +37,10 @@ export function saveKnowledge(data) {
   return request.post('/ai/knowledge/save', data)
 }
 
+export function seedDefaultKnowledge() {
+  return request.post('/ai/knowledge/seed-default')
+}
+
 export function deleteKnowledge(id) {
   return request.delete(`/ai/knowledge/${id}`)
 }

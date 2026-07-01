@@ -39,6 +39,7 @@ public class AgentService {
         boolean deleteIntent = containsAny(normalized, "删除", "清空", "移除");
         boolean writeIntent = containsAny(normalized, "新增", "添加", "修改", "更新", "保存", "入库");
         boolean borrowIntent = containsAny(normalized, "借阅", "逾期", "归还", "热门");
+        boolean bookSearchIntent = containsAny(normalized, "找出", "查询", "搜索", "筛选", "库存", "冷门", "没人借", "无人借");
 
         if (deleteIntent) {
             result.put("intent", "blocked_delete_operation");
@@ -70,6 +71,11 @@ public class AgentService {
             result.put("steps", Arrays.asList("读取借阅记录", "统计热门和逾期风险", "生成管理建议"));
             result.put("tools_to_call", Arrays.asList("getBorrowStatistics", "findOverdueRecords"));
             result.put("draft_result", aiService.analyzeBorrow("month", adminId));
+        } else if (bookSearchIntent) {
+            result.put("intent", "book_search_analysis");
+            result.put("steps", Arrays.asList("解析筛选条件", "读取馆藏和借阅记录", "返回候选图书和处理建议"));
+            result.put("tools_to_call", Arrays.asList("searchBooks", "getBookDetail"));
+            result.put("draft_result", aiService.searchBooksForTask(normalized, adminId));
         } else {
             result.put("intent", "book_quality_analysis");
             result.put("steps", Arrays.asList("查询图书数据", "执行馆藏质检规则", "生成整改建议"));

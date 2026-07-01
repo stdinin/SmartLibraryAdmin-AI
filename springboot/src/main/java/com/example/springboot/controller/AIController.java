@@ -70,6 +70,11 @@ public class AIController {
         }
     }
 
+    @PostMapping("/knowledge/seed-default")
+    public Result knowledgeSeedDefault() {
+        return Result.success(ragService.seedDefaultKnowledge());
+    }
+
     @DeleteMapping("/knowledge/{id}")
     public Result knowledgeDelete(@PathVariable Long id) {
         try {

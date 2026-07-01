@@ -6,6 +6,15 @@
           <div slot="header" class="panel-title">管理员智能助手</div>
           <el-tabs v-model="mode">
             <el-tab-pane label="知识问答" name="chat">
+              <div class="quick-row">
+                <el-tag
+                    v-for="item in chatExamples"
+                    :key="item"
+                    size="small"
+                    @click="question = item">
+                  {{ item }}
+                </el-tag>
+              </div>
               <el-input
                   type="textarea"
                   :rows="8"
@@ -17,6 +26,16 @@
               </el-button>
             </el-tab-pane>
             <el-tab-pane label="任务规划" name="agent">
+              <div class="quick-row">
+                <el-tag
+                    v-for="item in taskExamples"
+                    :key="item"
+                    size="small"
+                    type="success"
+                    @click="task = item">
+                  {{ item }}
+                </el-tag>
+              </div>
               <el-input
                   type="textarea"
                   :rows="8"
@@ -28,7 +47,10 @@
               </el-button>
             </el-tab-pane>
             <el-tab-pane label="知识库" name="knowledge">
-              <el-button type="primary" plain class="full-button top0" @click="openKnowledgeDialog()">新增知识</el-button>
+              <div class="knowledge-actions">
+                <el-button type="primary" plain size="small" @click="openKnowledgeDialog()">新增知识</el-button>
+                <el-button type="success" plain size="small" :loading="knowledgeSeeding" @click="seedKnowledge">初始化规则</el-button>
+              </div>
               <el-input
                   v-model="knowledgeFilter"
                   placeholder="筛选知识标题"
@@ -38,6 +60,7 @@
               <el-table :data="filteredKnowledge" size="small" height="260" border>
                 <el-table-column prop="title" label="标题"></el-table-column>
                 <el-table-column prop="sourceType" label="来源" width="88"></el-table-column>
+                <el-table-column prop="content" label="内容摘要" show-overflow-tooltip></el-table-column>
                 <el-table-column label="操作" width="120">
                   <template slot-scope="scope">
                     <el-button type="text" size="mini" @click="openKnowledgeDialog(scope.row)">编辑</el-button>
@@ -57,12 +80,9 @@
 
           <div v-if="chatResult" class="result-block">
             <h3>回答</h3>
-            <el-alert
-                :title="chatResult.answer"
-                :type="chatResult.uncertain ? 'warning' : 'success'"
-                :closable="false"
-                show-icon>
-            </el-alert>
+            <div class="answer-card" :class="{ uncertain: chatResult.uncertain }">
+              {{ chatResult.answer }}
+            </div>
 
             <h3>数据库事实</h3>
             <div v-if="hasDbFacts">
@@ -123,7 +143,59 @@
 
             <div v-if="agentResult.draft_result" class="draft-box">
               <h3>草案/分析结果</h3>
-              <pre>{{ pretty(agentResult.draft_result) }}</pre>
+              <el-alert
+                  v-if="agentResult.draft_result.summary"
+                  :title="agentResult.draft_result.summary"
+                  type="info"
+                  :closable="false"
+                  style="margin-bottom: 12px">
+              </el-alert>
+              <el-table
+                  v-if="isBookSearchDraft"
+                  :data="agentResult.draft_result.matchedBooks || []"
+                  size="small"
+                  border>
+                <el-table-column prop="name" label="书名" show-overflow-tooltip></el-table-column>
+                <el-table-column prop="author" label="作者" width="130" show-overflow-tooltip></el-table-column>
+                <el-table-column prop="category" label="分类" width="130"></el-table-column>
+                <el-table-column prop="nums" label="库存" width="70"></el-table-column>
+              </el-table>
+              <el-table
+                  v-else-if="isBorrowDraft"
+                  :data="agentResult.draft_result.overdueRisks || []"
+                  size="small"
+                  border>
+                <el-table-column prop="bookName" label="逾期图书" show-overflow-tooltip></el-table-column>
+                <el-table-column prop="userName" label="读者" width="100"></el-table-column>
+                <el-table-column prop="userPhone" label="电话" width="130"></el-table-column>
+                <el-table-column prop="returnDate" label="应还日期" width="120"></el-table-column>
+              </el-table>
+              <div v-else-if="isQualityDraft">
+                <el-row :gutter="10">
+                  <el-col :span="6">
+                    <div class="mini-stat">缺字段 {{ (agentResult.draft_result.missingBooks || []).length }}</div>
+                  </el-col>
+                  <el-col :span="6">
+                    <div class="mini-stat">疑似重复 {{ (agentResult.draft_result.duplicateBooks || []).length }}</div>
+                  </el-col>
+                  <el-col :span="6">
+                    <div class="mini-stat">库存异常 {{ (agentResult.draft_result.stockAbnormalBooks || []).length }}</div>
+                  </el-col>
+                  <el-col :span="6">
+                    <div class="mini-stat">分类异常 {{ (agentResult.draft_result.categoryAbnormalBooks || []).length }}</div>
+                  </el-col>
+                </el-row>
+              </div>
+              <pre v-else>{{ pretty(agentResult.draft_result) }}</pre>
+              <div v-if="agentResult.draft_result.suggestions && agentResult.draft_result.suggestions.length" class="suggestions">
+                <el-alert
+                    v-for="(item, index) in agentResult.draft_result.suggestions"
+                    :key="index"
+                    :title="item"
+                    type="success"
+                    :closable="false">
+                </el-alert>
+              </div>
             </div>
             <el-button
                 v-if="agentResult.need_confirm"
@@ -209,6 +281,7 @@ import {
   listAgentTasks,
   listKnowledge,
   ragChat,
+  seedDefaultKnowledge,
   saveKnowledge
 } from '@/api/ai'
 
@@ -224,6 +297,8 @@ export default {
       taskHistory: [],
       knowledgeList: [],
       knowledgeFilter: '',
+      chatExamples: ['借阅逾期怎么处理？', '有没有小说相关的书？', '图书分类规范是什么？'],
+      taskExamples: ['帮我找出库存为0且长期没人借的书', '分析本月借阅和逾期风险', '检查馆藏数据质量'],
       knowledgeDialogVisible: false,
       knowledgeForm: this.emptyKnowledgeForm(),
       chatLoading: false,
@@ -231,6 +306,7 @@ export default {
       confirmLoading: false,
       cancelLoading: false,
       knowledgeSaving: false,
+      knowledgeSeeding: false,
       pollTimer: null
     }
   },
@@ -255,6 +331,15 @@ export default {
       const keyword = (this.knowledgeFilter || '').trim()
       if (!keyword) return this.knowledgeList
       return this.knowledgeList.filter(item => (item.title || '').indexOf(keyword) >= 0)
+    },
+    isBookSearchDraft() {
+      return this.agentResult && this.agentResult.draft_result && Array.isArray(this.agentResult.draft_result.matchedBooks)
+    },
+    isBorrowDraft() {
+      return this.agentResult && this.agentResult.draft_result && Array.isArray(this.agentResult.draft_result.overdueRisks)
+    },
+    isQualityDraft() {
+      return this.agentResult && this.agentResult.draft_result && this.agentResult.draft_result.missingFieldStats
     }
   },
   mounted() {
@@ -389,6 +474,19 @@ export default {
         }
       })
     },
+    seedKnowledge() {
+      this.knowledgeSeeding = true
+      seedDefaultKnowledge().then(res => {
+        if (res.code === '200') {
+          this.$message.success(`已补充 ${res.data.inserted || 0} 条默认知识`)
+          this.loadKnowledge()
+        } else {
+          this.$message.error(res.msg || '初始化失败')
+        }
+      }).finally(() => {
+        this.knowledgeSeeding = false
+      })
+    },
     openKnowledgeDialog(row) {
       this.knowledgeForm = row ? Object.assign({}, row) : this.emptyKnowledgeForm()
       this.knowledgeDialogVisible = true
@@ -456,6 +554,19 @@ export default {
   align-items: center;
   justify-content: space-between;
 }
+.quick-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.quick-row .el-tag {
+  cursor: pointer;
+}
+.knowledge-actions {
+  display: flex;
+  gap: 8px;
+}
 .full-button {
   margin-top: 12px;
   width: 100%;
@@ -467,6 +578,19 @@ export default {
   margin: 16px 0 10px;
   font-size: 15px;
 }
+.answer-card {
+  padding: 14px 16px;
+  color: #303133;
+  line-height: 1.8;
+  white-space: pre-wrap;
+  background: #f0f9eb;
+  border: 1px solid #d9ecff;
+  border-radius: 6px;
+}
+.answer-card.uncertain {
+  background: #fdf6ec;
+  border-color: #faecd8;
+}
 .task-progress {
   margin: 16px 0 4px;
 }
@@ -476,6 +600,19 @@ export default {
   border-radius: 4px;
   white-space: pre-wrap;
   word-break: break-all;
+}
+.mini-stat {
+  padding: 12px;
+  color: #303133;
+  text-align: center;
+  background: #f6f8fa;
+  border: 1px solid #ebeef5;
+  border-radius: 6px;
+}
+.suggestions {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
 }
 .danger-text {
   color: #f56c6c;
