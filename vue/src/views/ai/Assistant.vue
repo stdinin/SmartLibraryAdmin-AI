@@ -26,24 +26,39 @@
               </el-button>
             </el-tab-pane>
             <el-tab-pane label="任务规划" name="agent">
-              <div class="quick-row">
-                <el-tag
-                    v-for="item in taskExamples"
-                    :key="item"
-                    size="small"
-                    type="success"
-                    @click="task = item">
-                  {{ item }}
-                </el-tag>
+              <el-alert
+                  title="执行规则：只读查询可直接执行；新增/修改只生成待确认草案；删除、清空等危险操作会被阻断。"
+                  type="info"
+                  :closable="false"
+                  class="task-policy">
+              </el-alert>
+              <div
+                  v-for="group in taskExampleGroups"
+                  :key="group.title"
+                  class="task-example-group">
+                <div class="example-title">
+                  <el-tag size="mini" :type="group.type">{{ group.title }}</el-tag>
+                  <span>{{ group.desc }}</span>
+                </div>
+                <div class="quick-row">
+                  <el-tag
+                      v-for="item in group.items"
+                      :key="item"
+                      size="small"
+                      :type="group.type"
+                      @click="task = item">
+                    {{ item }}
+                  </el-tag>
+                </div>
               </div>
               <el-input
                   type="textarea"
                   :rows="8"
                   v-model="task"
-                  placeholder="例如：帮我找出库存为0且长期没人借的书">
+                  placeholder="例如：执行：筛选库存为0且长期没人借的书">
               </el-input>
               <el-button type="success" class="full-button" :loading="agentLoading" @click="createPlan">
-                生成方案
+                执行/生成方案
               </el-button>
             </el-tab-pane>
             <el-tab-pane label="知识库" name="knowledge">
@@ -186,6 +201,33 @@
                   </el-col>
                 </el-row>
               </div>
+              <div v-else-if="isBookWriteDraft">
+                <el-alert
+                    :title="agentResult.draft_result.nextStep || agentResult.draft_result.notice"
+                    type="warning"
+                    :closable="false"
+                    style="margin-bottom: 12px">
+                </el-alert>
+                <el-descriptions :column="2" border>
+                  <el-descriptions-item label="操作">{{ agentResult.draft_result.operation }}</el-descriptions-item>
+                  <el-descriptions-item label="书名">{{ agentResult.draft_result.bookDraft.name || '未识别' }}</el-descriptions-item>
+                  <el-descriptions-item label="作者">{{ agentResult.draft_result.bookDraft.author || '未识别' }}</el-descriptions-item>
+                  <el-descriptions-item label="出版社">{{ agentResult.draft_result.bookDraft.publisher || '未识别' }}</el-descriptions-item>
+                  <el-descriptions-item label="分类">{{ agentResult.draft_result.bookDraft.category || '未识别' }}</el-descriptions-item>
+                  <el-descriptions-item label="库存">{{ agentResult.draft_result.bookDraft.nums || '未识别' }}</el-descriptions-item>
+                  <el-descriptions-item label="简介" :span="2">{{ agentResult.draft_result.bookDraft.description || '未识别' }}</el-descriptions-item>
+                </el-descriptions>
+                <div v-if="agentResult.draft_result.missingFields && agentResult.draft_result.missingFields.length" class="missing-fields">
+                  <span>缺少字段：</span>
+                  <el-tag
+                      v-for="item in agentResult.draft_result.missingFields"
+                      :key="item"
+                      size="mini"
+                      type="warning">
+                    {{ item }}
+                  </el-tag>
+                </div>
+              </div>
               <pre v-else>{{ pretty(agentResult.draft_result) }}</pre>
               <div v-if="agentResult.draft_result.suggestions && agentResult.draft_result.suggestions.length" class="suggestions">
                 <el-alert
@@ -298,7 +340,26 @@ export default {
       knowledgeList: [],
       knowledgeFilter: '',
       chatExamples: ['借阅逾期怎么处理？', '有没有小说相关的书？', '图书分类规范是什么？'],
-      taskExamples: ['帮我找出库存为0且长期没人借的书', '分析本月借阅和逾期风险', '检查馆藏数据质量'],
+      taskExampleGroups: [
+        {
+          title: '只读执行',
+          type: 'success',
+          desc: '自动查询并返回结果，不改业务数据',
+          items: ['执行：筛选库存为0且长期没人借的书', '执行：生成本月逾期提醒清单', '执行：检查馆藏数据质量']
+        },
+        {
+          title: '需确认执行',
+          type: 'warning',
+          desc: '生成新增/修改草案，管理员确认后再去原页面保存',
+          items: ['执行：新增一本《人工智能导论》作者王明出版社清华大学出版社库存3本', '执行：修改《活着》的分类为文学小说']
+        },
+        {
+          title: '禁止执行',
+          type: 'danger',
+          desc: '删除和清空类任务只提示风险，不自动处理',
+          items: ['执行：删除所有库存为0的书']
+        }
+      ],
       knowledgeDialogVisible: false,
       knowledgeForm: this.emptyKnowledgeForm(),
       chatLoading: false,
@@ -340,6 +401,9 @@ export default {
     },
     isQualityDraft() {
       return this.agentResult && this.agentResult.draft_result && this.agentResult.draft_result.missingFieldStats
+    },
+    isBookWriteDraft() {
+      return this.agentResult && this.agentResult.draft_result && this.agentResult.draft_result.bookDraft
     }
   },
   mounted() {
@@ -563,6 +627,24 @@ export default {
 .quick-row .el-tag {
   cursor: pointer;
 }
+.task-policy {
+  margin-bottom: 10px;
+}
+.task-example-group {
+  padding: 10px 0;
+  border-bottom: 1px dashed #ebeef5;
+}
+.task-example-group:last-of-type {
+  border-bottom: none;
+}
+.example-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  color: #606266;
+  font-size: 12px;
+}
 .knowledge-actions {
   display: flex;
   gap: 8px;
@@ -613,6 +695,13 @@ export default {
   display: grid;
   gap: 8px;
   margin-top: 12px;
+}
+.missing-fields {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  color: #606266;
 }
 .danger-text {
   color: #f56c6c;

@@ -14,6 +14,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Service
 @Slf4j
@@ -181,9 +183,65 @@ public class AgentService {
 
     private Map<String, Object> draftFromTask(String task) {
         Map<String, Object> draft = new LinkedHashMap<>();
+        Map<String, Object> bookDraft = new LinkedHashMap<>();
+        boolean update = containsAny(task, "修改", "更新");
+
+        bookDraft.put("name", firstNonBlank(
+                extract(task, "《([^》]+)》"),
+                extract(task, "(?:新增一本|新增图书|添加一本|添加图书|入库一本|入库图书)([^，,。；;\\s]+)")
+        ));
+        bookDraft.put("author", extract(task, "作者(?:是|为|:|：)?(.+?)(?=出版社|出版方|分类|类别|库存|数量|册数|简介|描述|，|,|。|；|;|$)"));
+        bookDraft.put("publisher", extract(task, "(?:出版社|出版方)(?:是|为|:|：)?(.+?)(?=分类|类别|库存|数量|册数|简介|描述|，|,|。|；|;|$)"));
+        bookDraft.put("category", extract(task, "(?:分类|类别)(?:是|为|:|：)?(.+?)(?=库存|数量|册数|简介|描述|，|,|。|；|;|$)"));
+        bookDraft.put("nums", parseInt(firstNonBlank(
+                extract(task, "(?:库存|数量|册数)(?:是|为|:|：)?(\\d+)"),
+                extract(task, "(\\d+)本")
+        )));
+        bookDraft.put("description", extract(task, "(?:简介|描述)(?:是|为|:|：)?(.+?)(?=；|;|$)"));
+
+        List<String> missingFields = new ArrayList<>();
+        if (StrUtil.isBlank(String.valueOf(bookDraft.get("name")))) missingFields.add("书名");
+        if (StrUtil.isBlank(String.valueOf(bookDraft.get("author")))) missingFields.add("作者");
+        if (StrUtil.isBlank(String.valueOf(bookDraft.get("publisher")))) missingFields.add("出版社");
+
+        draft.put("operation", update ? "updateBookDraft" : "createBookDraft");
+        draft.put("bookDraft", bookDraft);
+        draft.put("missingFields", missingFields);
         draft.put("rawTask", task);
-        draft.put("notice", "请在原业务页面核对字段后保存，Agent不会直接写入数据库。");
+        draft.put("notice", "这是待确认草案，不会直接写入数据库。请在原图书页面核对字段后保存。");
+        draft.put("nextStep", missingFields.isEmpty() ? "字段已尽量解析完整，可复制到图书新增/编辑页核对。" : "草案仍缺少字段：" + String.join("、", missingFields));
         return draft;
+    }
+
+    private String extract(String text, String regex) {
+        if (StrUtil.isBlank(text)) {
+            return "";
+        }
+        Matcher matcher = Pattern.compile(regex).matcher(text);
+        if (!matcher.find()) {
+            return "";
+        }
+        return StrUtil.trimToEmpty(matcher.group(1));
+    }
+
+    private String firstNonBlank(String... values) {
+        for (String value : values) {
+            if (StrUtil.isNotBlank(value)) {
+                return value;
+            }
+        }
+        return "";
+    }
+
+    private Integer parseInt(String value) {
+        if (StrUtil.isBlank(value)) {
+            return null;
+        }
+        try {
+            return Integer.parseInt(value);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private AITaskLog loadOwnedTask(Integer adminId, Long taskLogId) {
